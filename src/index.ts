@@ -1,13 +1,23 @@
 /**
- * TODO:
- * use buffer frames:
- * - when "ssam:ffmpeg-newframe" is received, first store in frameBuffer array.
- * - processFrames() will use recursion to process buffer frames.
- *   - but, would it block other operations?
- * - when "ssam:ffmpeg-done" is received, do not stdin.end().
- * - need to process any remaining buffer frames first.
  *
- * or, is there a better way to handle the pressure?
+ * - check ffmpeg install, if not round, abort
+ * - "ssam:ffmpeg" received, set up ffmpeg encoder
+ * - "ssam:ffmpeg-newframe" received, store in frameBuffers[] and start encoding from first frame
+ * - "ssam:ffmpeg-done" received, encode remaining buffer frames and end.
+ *
+ * it used to be "ssam:ffmpeg" will both check ffmpeg --version and set up encoder. that resulted in first few frames missing.
+ * so now, install check is done when plugin is first loaded.
+ *
+ * FIX
+ * - encoding is very slow during "ffmpeg-newframe" event as it needs to store and process at the same time.
+ * - when video is very long and large, video file is not playable. buffer array gets very large.
+ * - 4000x4000 results in pixelated video with libx264 codec. is it codec limitation or settings?
+ *
+ * REVIEW
+ * - better handle streaming
+ * - one option is to sync the client recordLoop() and ffmpeg encoding speed.
+ *   - this method will not need a big buffer
+ *   - send a message to client that it's okay to move to next frame
  */
 
 import type { PluginOption, ViteDevServer } from "vite";
@@ -51,77 +61,74 @@ const removeAnsiEscapeCodes = (str: string) => {
 
 let isFfmpegInstalled = false;
 let isFfmpegReady = false; // ready to receive a new frame?
-let frameBuffer: Buffer[] = [];
+let frameBuffers: Buffer[] = [];
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
   apply: "serve",
-  configureServer(server: ViteDevServer) {
+  async configureServer(server: ViteDevServer) {
     const { log, outDir } = { ...defaultOptions, ...opts };
+
+    // check for ffmpeg install first when plugin is loaded
+    await execPromise(`ffmpeg -version`)
+      .catch((err) => {
+        // if no ffmpeg, warn and abort
+        const msg = `${prefix()} ${yellow(err)}`;
+        log && server.ws.send("ssam:warn", { msg: removeAnsiEscapeCodes(msg) });
+        console.warn(`${msg}`);
+      })
+      .then(() => {
+        isFfmpegInstalled = true;
+      });
 
     let stdin: Writable;
     let stdout: Readable;
     let stderr: Readable;
 
-    const processFrames = () => {
-      //
-    };
-
     server.ws.on("ssam:ffmpeg", async (data, client) => {
+      if (!isFfmpegInstalled) {
+        const msg = `${prefix()} ffmpeg was not found`;
+        log && client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msg) });
+        console.warn(msg);
+      }
+
       const { filename, format, fps } = data;
 
-      // FIX: in Ssam, "ssam:ffmpeg" and "ssam:ffmpeg-newframe" are sent at the same time.
-      //      b/c ffmpeg is not ready, first few frames are dropped.
-      //      there's no way to control when new frame is ready,
-      //      1. incoming frames will first need to be stored in buffer,
-      //      and processed when it can.
-      //      2. or, can "pipe" be a solution?
       if (format === "mp4") {
-        // check for ffmpeg installation
-        await execPromise(`ffmpeg -version`)
-          .catch((err) => {
-            // if no ffmpeg, warn and abort
-            const msg = `${prefix()} ${yellow(err)}`;
-            log &&
-              client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msg) });
-            console.warn(`${msg}`);
-          })
-          .then(() => {
-            isFfmpegInstalled = true;
+        // if outDir not exist, create one
+        // TODO: use promise
+        if (!fs.existsSync(outDir)) {
+          console.log(
+            `${prefix()} creating a new directory at ${path.resolve(outDir)}`
+          );
+          fs.mkdirSync(outDir);
+        }
 
-            // if outDir not exist, create one
-            // TODO: use promise
-            if (!fs.existsSync(outDir)) {
-              console.log(
-                `${prefix()} creating a new directory at ${path.resolve(
-                  outDir
-                )}`
-              );
-              fs.mkdirSync(outDir);
-            }
-
-            //prettier-ignore
-            const inputArgs = [
+        //prettier-ignore
+        const inputArgs = [
               "-f", "image2pipe", "-framerate", fps, "-c:v", "png", '-i', '-',
             ]
-            //prettier-ignore
-            const outputArgs = [
+        //prettier-ignore
+        const outputArgs = [
               "-c:v", "libx264", "-pix_fmt", "yuv420p", 
               "-preset", "slow", "-crf", "18", "-r", fps, 
-              '-movflags', 'faststart',
+              // '-movflags', 'faststart',
+              '-movflags', '+faststart',
             ]
-            const command = spawn("ffmpeg", [
-              ...inputArgs,
-              ...outputArgs,
-              "-y",
-              path.join(outDir, `${filename}.${format}`),
-            ]);
+        const command = spawn("ffmpeg", [
+          "-y",
+          ...inputArgs,
+          ...outputArgs,
+          path.join(outDir, `${filename}.${format}`),
+        ]);
 
-            ({ stdin, stdout, stderr } = command);
+        ({ stdin, stdout, stderr } = command);
 
-            const msg = `${prefix()} recording (mp4) started`;
-            log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
-          });
+        isFfmpegReady = true;
+
+        const msg = `${prefix()} streaming (mp4) started`;
+        log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
+        console.log(msg);
       }
     });
 
@@ -131,8 +138,17 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       // record a new frame
 
       // 1. writing directly - this causes a few frames dropout at beginning
-      const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      stdin.write(buffer);
+      // const buffer = Buffer.from(data.image.split(",")[1], "base64");
+      // stdin.write(buffer);
+
+      // 2. add to buffers first
+      frameBuffers.push(Buffer.from(data.image.split(",")[1], "base64"));
+      if (isFfmpegReady) {
+        while (frameBuffers.length > 0) {
+          const frame = frameBuffers.shift();
+          frame && stdin.write(frame);
+        }
+      }
 
       // send log to client
       const msg = `${prefix()} ${data.msg}`;
@@ -143,8 +159,17 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
     server.ws.on("ssam:ffmpeg-done", (data, client) => {
       if (!isFfmpegInstalled) return;
 
+      // handle remaining frames
+      while (frameBuffers.length > 0) {
+        const frame = frameBuffers.shift();
+        stdin.write(frame);
+      }
+
       // finish up recording
       stdin.end();
+
+      // reset state
+      isFfmpegReady = false;
 
       // send log to client
       const msg = `${prefix()} ${data.msg}`;
