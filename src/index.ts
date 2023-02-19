@@ -1,23 +1,16 @@
 /**
  *
- * - check ffmpeg install, if not round, abort
+ * - check ffmpeg install, if not found, abort
  * - "ssam:ffmpeg" received, set up ffmpeg encoder
- * - "ssam:ffmpeg-newframe" received, store in frameBuffers[] and start encoding from first frame
- * - "ssam:ffmpeg-done" received, encode remaining buffer frames and end.
- *
- * it used to be "ssam:ffmpeg" will both check ffmpeg --version and set up encoder. that resulted in first few frames missing.
- * so now, install check is done when plugin is first loaded.
+ * - "ssam:ffmpeg-newframe" received, encode the frame, and when it's finished request next frame with "ssam:ffmpeg-reqframe".
+ * - on client-side, it will wait until "ffmpeg-reqframe" is received and then advance time and send a new frame. (send/receive/encode is synched)
+ * - when "ssam:ffmpeg-done" received, finish encoding
  *
  * FIX
- * - encoding is very slow during "ffmpeg-newframe" event as it needs to store and process at the same time.
- * - when video is very long and large, video file is not playable. buffer array gets very large.
  * - 4000x4000 results in pixelated video with libx264 codec. is it codec limitation or settings?
  *
  * REVIEW
- * - better handle streaming
- * - one option is to sync the client recordLoop() and ffmpeg encoding speed.
- *   - this method will not need a big buffer
- *   - send a message to client that it's okay to move to next frame
+ * - alternative: better handle streaming through pipe?
  */
 
 import type { PluginOption, ViteDevServer } from "vite";
@@ -61,7 +54,8 @@ const removeAnsiEscapeCodes = (str: string) => {
 
 let isFfmpegInstalled = false;
 let isFfmpegReady = false; // ready to receive a new frame?
-let frameBuffers: Buffer[] = [];
+// let frameBuffers: Buffer[] = [];
+// const MAX_BUFFER_SIZE = 4;
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
@@ -126,6 +120,9 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         isFfmpegReady = true;
 
+        // request a frame to process
+        // client.send("ssam:ffmpeg-reqframe");
+
         const msg = `${prefix()} streaming (mp4) started`;
         log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
         console.log(msg);
@@ -137,18 +134,24 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
       // record a new frame
 
-      // 1. writing directly - this causes a few frames dropout at beginning
-      // const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      // stdin.write(buffer);
+      // write frame and when it's written, ask for next frame
+      const buffer = Buffer.from(data.image.split(",")[1], "base64");
+      stdin.write(buffer, () => {
+        client.send("ssam:ffmpeg-reqframe");
+      });
 
       // 2. add to buffers first
-      frameBuffers.push(Buffer.from(data.image.split(",")[1], "base64"));
-      if (isFfmpegReady) {
-        while (frameBuffers.length > 0) {
-          const frame = frameBuffers.shift();
-          frame && stdin.write(frame);
-        }
-      }
+      // frameBuffers.push(Buffer.from(data.image.split(",")[1], "base64"));
+      // if (isFfmpegReady) {
+      //   while (frameBuffers.length > 0) {
+      //     const frame = frameBuffers.shift();
+      //     frame && stdin.write(frame);
+      //   }
+      // }
+      // // if buffer is still available, request more frame
+      // if (frameBuffers.length < MAX_BUFFER_SIZE) {
+      //   client.send("ssam:ffmpeg-reqframe");
+      // }
 
       // send log to client
       const msg = `${prefix()} ${data.msg}`;
@@ -160,10 +163,10 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       if (!isFfmpegInstalled) return;
 
       // handle remaining frames
-      while (frameBuffers.length > 0) {
-        const frame = frameBuffers.shift();
-        stdin.write(frame);
-      }
+      // while (frameBuffers.length > 0) {
+      //   const frame = frameBuffers.shift();
+      //   stdin.write(frame);
+      // }
 
       // finish up recording
       stdin.end();
