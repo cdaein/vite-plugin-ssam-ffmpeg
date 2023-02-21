@@ -141,19 +141,22 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      frameBuffers.push(Buffer.from(buffer));
-
-      stdin.write(frameBuffers.shift(), () => {
-        if (totalFramesToRecord) {
-          if (framesRecorded < totalFramesToRecord) {
-            client.send("ssam:ffmpeg-reqframe");
-            framesRecorded += 1;
-          }
-        } else {
-          // if duration === Infinity (null on server)
-          client.send("ssam:ffmpeg-reqframe");
-        }
+      stdin.write(buffer, () => {
+        client.send("ssam:ffmpeg-reqframe");
       });
+
+      // frameBuffers.push(Buffer.from(buffer));
+      // stdin.write(frameBuffers.shift(), () => {
+      //   if (totalFramesToRecord) {
+      //     if (framesRecorded < totalFramesToRecord) {
+      //       client.send("ssam:ffmpeg-reqframe");
+      //       framesRecorded += 1;
+      //     }
+      //   } else {
+      //     // if duration === Infinity (null on server)
+      //     client.send("ssam:ffmpeg-reqframe");
+      //   }
+      // });
 
       // 2. add to buffers first
       // frameBuffers.push(Buffer.from(data.image.split(",")[1], "base64"));
@@ -178,10 +181,10 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       if (!isFfmpegInstalled) return;
 
       // handle remaining frames
-      while (frameBuffers.length > 0) {
-        const frame = frameBuffers.shift();
-        stdin.write(frame);
-      }
+      // while (frameBuffers.length > 0) {
+      //   const frame = frameBuffers.shift();
+      //   stdin.write(frame);
+      // }
 
       // finish up recording
       stdin.end();
