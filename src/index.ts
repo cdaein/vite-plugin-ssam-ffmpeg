@@ -7,7 +7,9 @@
  * - when "ssam:ffmpeg-done" received, finish encoding
  *
  * FIX
- * - 4000x4000 results in pixelated video with libx264 codec. is it codec limitation or settings?
+ * - 4000x4000 results in pixelated video with libx264 codec.
+ *   - is it codec limitation or settings?
+ *   - stream chunks?
  *
  * REVIEW
  * - alternative: better handle streaming through pipe?
@@ -54,8 +56,10 @@ const removeAnsiEscapeCodes = (str: string) => {
 
 let isFfmpegInstalled = false;
 let isFfmpegReady = false; // ready to receive a new frame?
-// let frameBuffers: Buffer[] = [];
+let frameBuffers: Buffer[] = [];
 // const MAX_BUFFER_SIZE = 4;
+let totalFramesToRecord = 0;
+let framesRecorded = 0;
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
@@ -86,7 +90,8 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         console.warn(msg);
       }
 
-      const { filename, format, fps } = data;
+      const { filename, format, fps, totalFrames } = data;
+      totalFramesToRecord = totalFrames;
 
       if (format === "mp4") {
         // if outDir not exist, create one
@@ -136,8 +141,18 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      stdin.write(buffer, () => {
-        client.send("ssam:ffmpeg-reqframe");
+      frameBuffers.push(Buffer.from(buffer));
+
+      stdin.write(frameBuffers.shift(), () => {
+        if (totalFramesToRecord) {
+          if (framesRecorded < totalFramesToRecord) {
+            client.send("ssam:ffmpeg-reqframe");
+            framesRecorded += 1;
+          }
+        } else {
+          // if duration === Infinity (null on server)
+          client.send("ssam:ffmpeg-reqframe");
+        }
       });
 
       // 2. add to buffers first
@@ -163,16 +178,17 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       if (!isFfmpegInstalled) return;
 
       // handle remaining frames
-      // while (frameBuffers.length > 0) {
-      //   const frame = frameBuffers.shift();
-      //   stdin.write(frame);
-      // }
+      while (frameBuffers.length > 0) {
+        const frame = frameBuffers.shift();
+        stdin.write(frame);
+      }
 
       // finish up recording
       stdin.end();
 
       // reset state
       isFfmpegReady = false;
+      framesRecorded = 0;
 
       // send log to client
       const msg = `${prefix()} ${data.msg}`;
