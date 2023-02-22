@@ -148,7 +148,9 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       framesRecorded++;
 
       // send log to client
-      const msg = `${prefix()} recording (mp4) frame... ${framesRecorded} of ${totalFrames}`;
+      const msg = `${prefix()} recording (mp4) frame... ${framesRecorded} of ${
+        totalFrames ? totalFrames : "Infinity"
+      }`;
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
       console.log(msg);
     });
