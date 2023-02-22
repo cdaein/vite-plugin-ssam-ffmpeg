@@ -58,8 +58,11 @@ let isFfmpegInstalled = false;
 let isFfmpegReady = false; // ready to receive a new frame?
 let frameBuffers: Buffer[] = [];
 // const MAX_BUFFER_SIZE = 4;
-let totalFramesToRecord = 0;
+
+let filename: string;
+let format: string;
 let framesRecorded = 0;
+let totalFrames = 0;
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
@@ -90,8 +93,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         console.warn(msg);
       }
 
-      const { filename, format, fps, totalFrames } = data;
-      totalFramesToRecord = totalFrames;
+      ({ filename, format, totalFrames } = data);
 
       if (format === "mp4") {
         // if outDir not exist, create one
@@ -105,12 +107,12 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         //prettier-ignore
         const inputArgs = [
-              "-f", "image2pipe", "-framerate", fps, "-c:v", "png", '-i', '-',
+              "-f", "image2pipe", "-framerate", data.fps, "-c:v", "png", '-i', '-',
             ]
         //prettier-ignore
         const outputArgs = [
               "-c:v", "libx264", "-pix_fmt", "yuv420p", 
-              "-preset", "slow", "-crf", "18", "-r", fps, 
+              "-preset", "slow", "-crf", "18", "-r", data.fps, 
               // '-movflags', 'faststart',
               '-movflags', '+faststart',
             ]
@@ -124,9 +126,6 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         ({ stdin, stdout, stderr } = command);
 
         isFfmpegReady = true;
-
-        // request a frame to process
-        // client.send("ssam:ffmpeg-reqframe");
 
         const msg = `${prefix()} streaming (mp4) started`;
         log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
@@ -142,37 +141,14 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
       stdin.write(buffer, () => {
+        // request next frame
         client.send("ssam:ffmpeg-reqframe");
       });
 
-      // frameBuffers.push(Buffer.from(buffer));
-      // stdin.write(frameBuffers.shift(), () => {
-      //   if (totalFramesToRecord) {
-      //     if (framesRecorded < totalFramesToRecord) {
-      //       client.send("ssam:ffmpeg-reqframe");
-      //       framesRecorded += 1;
-      //     }
-      //   } else {
-      //     // if duration === Infinity (null on server)
-      //     client.send("ssam:ffmpeg-reqframe");
-      //   }
-      // });
-
-      // 2. add to buffers first
-      // frameBuffers.push(Buffer.from(data.image.split(",")[1], "base64"));
-      // if (isFfmpegReady) {
-      //   while (frameBuffers.length > 0) {
-      //     const frame = frameBuffers.shift();
-      //     frame && stdin.write(frame);
-      //   }
-      // }
-      // // if buffer is still available, request more frame
-      // if (frameBuffers.length < MAX_BUFFER_SIZE) {
-      //   client.send("ssam:ffmpeg-reqframe");
-      // }
+      framesRecorded++;
 
       // send log to client
-      const msg = `${prefix()} ${data.msg}`;
+      const msg = `${prefix()} recording (mp4) frame... ${framesRecorded} of ${totalFrames}`;
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
       console.log(msg);
     });
@@ -194,7 +170,10 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       framesRecorded = 0;
 
       // send log to client
-      const msg = `${prefix()} ${data.msg}`;
+      const msg = `${prefix()} ${path.join(
+        outDir,
+        `${filename}.${format}`
+      )} recording (mp4) complete`;
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
       console.log(msg);
     });
