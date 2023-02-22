@@ -105,17 +105,15 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
           fs.mkdirSync(outDir);
         }
 
-        //prettier-ignore
-        const inputArgs = [
-              "-f", "image2pipe", "-framerate", data.fps, "-c:v", "png", '-i', '-',
-            ]
+        const inputArgs =
+          `-f image2pipe -framerate ${data.fps} -c:v png -i -`.split(" ");
         //prettier-ignore
         const outputArgs = [
-              "-c:v", "libx264", "-pix_fmt", "yuv420p", 
-              "-preset", "slow", "-crf", "18", "-r", data.fps, 
-              // '-movflags', 'faststart',
+              "-c:v", "libx264", "-pix_fmt", "yuv420p",
+              "-preset", "slow", "-crf", "18", "-r", data.fps,
               '-movflags', '+faststart',
             ]
+
         const command = spawn("ffmpeg", [
           "-y",
           ...inputArgs,
