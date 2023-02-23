@@ -19,7 +19,7 @@ import type { PluginOption, ViteDevServer } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import { exec, spawn } from "node:child_process";
-import { Readable, Writable } from "stream";
+import { Writable } from "stream";
 import kleur from "kleur";
 import ansiRegex from "ansi-regex";
 
@@ -56,11 +56,11 @@ const removeAnsiEscapeCodes = (str: string) => {
 
 let isFfmpegInstalled = false;
 let isFfmpegReady = false; // ready to receive a new frame?
-let frameBuffers: Buffer[] = [];
-// const MAX_BUFFER_SIZE = 4;
 
 let filename: string;
 let format: string;
+let width: number;
+let height: number;
 let framesRecorded = 0;
 let totalFrames = 0;
 
@@ -75,7 +75,11 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       .catch((err) => {
         // if no ffmpeg, warn and abort
         const msg = `${prefix()} ${yellow(err)}`;
-        log && server.ws.send("ssam:warn", { msg: removeAnsiEscapeCodes(msg) });
+        log &&
+          server.ws.send("ssam:warn", {
+            msg: removeAnsiEscapeCodes(msg),
+            abort: true,
+          });
         console.warn(`${msg}`);
       })
       .then(() => {
@@ -83,8 +87,8 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       });
 
     let stdin: Writable;
-    let stdout: Readable;
-    let stderr: Readable;
+    // let stdout: Readable;
+    // let stderr: Readable;
 
     server.ws.on("ssam:ffmpeg", async (data, client) => {
       if (!isFfmpegInstalled) {
@@ -93,7 +97,23 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         console.warn(msg);
       }
 
-      ({ filename, format, totalFrames } = data);
+      ({ filename, format, totalFrames, width, height } = data);
+
+      // TODO: ffmpeg can't handle odd dimension so crop it
+      // width = width % 2 === 0 ? width : width - 1;
+      // height = height % 2 === 0 ? height : height - 1;
+
+      if (width % 2 !== 0 || height % 2 !== 0) {
+        const msg = `${prefix()} ${yellow(
+          `ffmpeg cannot handle odd values for dimensions: { width:${width}, height:${height} }`
+        )}`;
+        client.send("ssam:warn", {
+          msg: removeAnsiEscapeCodes(msg),
+          abort: true,
+        });
+        console.warn(msg);
+        return;
+      }
 
       if (format === "mp4") {
         // if outDir not exist, create one
@@ -121,7 +141,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
           path.join(outDir, `${filename}.${format}`),
         ]);
 
-        ({ stdin, stdout, stderr } = command);
+        ({ stdin } = command);
 
         isFfmpegReady = true;
 
@@ -132,13 +152,17 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
     });
 
     server.ws.on("ssam:ffmpeg-newframe", async (data, client) => {
-      if (!isFfmpegInstalled) return;
+      if (!isFfmpegInstalled || !isFfmpegReady) return;
 
       // record a new frame
 
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      stdin.write(buffer, () => {
+      stdin.write(buffer, (err) => {
+        if (err) {
+          console.error(err);
+          return;
+        }
         // request next frame
         client.send("ssam:ffmpeg-reqframe");
       });
@@ -153,8 +177,8 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       console.log(msg);
     });
 
-    server.ws.on("ssam:ffmpeg-done", (data, client) => {
-      if (!isFfmpegInstalled) return;
+    server.ws.on("ssam:ffmpeg-done", (_, client) => {
+      if (!isFfmpegInstalled || !isFfmpegReady) return;
 
       // handle remaining frames
       // while (frameBuffers.length > 0) {
