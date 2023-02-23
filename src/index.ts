@@ -63,6 +63,7 @@ let width: number;
 let height: number;
 let framesRecorded = 0;
 let totalFrames = 0;
+let msgCropped = ""; // msg to log after finishing (otherwise, the log is already far up)
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
@@ -98,21 +99,14 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       }
 
       ({ filename, format, totalFrames, width, height } = data);
-
-      // TODO: ffmpeg can't handle odd dimension so crop it
-      // width = width % 2 === 0 ? width : width - 1;
-      // height = height % 2 === 0 ? height : height - 1;
+      // crop to be multiples of 2
+      const newWidth = width % 2 === 0 ? width : width - 1;
+      const newHeight = height % 2 === 0 ? height : height - 1;
 
       if (width % 2 !== 0 || height % 2 !== 0) {
-        const msg = `${prefix()} ${yellow(
-          `ffmpeg cannot handle odd values for dimensions: { width:${width}, height:${height} }`
+        msgCropped = `${prefix()} ${yellow(
+          `output dimensions cropped to be multiples of 2: [${newWidth}, ${newHeight}]`
         )}`;
-        client.send("ssam:warn", {
-          msg: removeAnsiEscapeCodes(msg),
-          abort: true,
-        });
-        console.warn(msg);
-        return;
       }
 
       if (format === "mp4") {
@@ -126,7 +120,9 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         }
 
         const inputArgs =
-          `-f image2pipe -framerate ${data.fps} -c:v png -i -`.split(" ");
+          `-f image2pipe -framerate ${data.fps} -c:v png -i - -filter crop=${newWidth}:${newHeight}:0:0`.split(
+            " "
+          );
         //prettier-ignore
         const outputArgs = [
               "-c:v", "libx264", "-pix_fmt", "yuv420p",
@@ -200,6 +196,11 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       )} recording (mp4) complete`;
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
       console.log(msg);
+
+      // if cropped
+      log &&
+        client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msgCropped) });
+      console.warn(msgCropped);
     });
   },
 });
