@@ -198,9 +198,11 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       console.log(msg);
 
       // if cropped
-      log &&
-        client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msgCropped) });
-      console.warn(msgCropped);
+      if (msgCropped.length !== 0) {
+        log &&
+          client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msgCropped) });
+        console.warn(msgCropped);
+      }
     });
   },
 });
