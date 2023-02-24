@@ -99,6 +99,8 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       }
 
       ({ filename, format, totalFrames, width, height } = data);
+      width = Math.floor(width);
+      height = Math.floor(height);
       // crop to be multiples of 2
       const newWidth = width % 2 === 0 ? width : width - 1;
       const newHeight = height % 2 === 0 ? height : height - 1;
