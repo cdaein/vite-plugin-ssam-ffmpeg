@@ -63,6 +63,7 @@ let width: number;
 let height: number;
 let framesRecorded = 0;
 let totalFrames = 0;
+let cropped = false;
 let msgCropped = ""; // msg to log after finishing (otherwise, the log is already far up)
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
@@ -106,9 +107,12 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       const newHeight = height % 2 === 0 ? height : height - 1;
 
       if (width % 2 !== 0 || height % 2 !== 0) {
+        cropped = true;
         msgCropped = `${prefix()} ${yellow(
           `output dimensions cropped to be multiples of 2: [${newWidth}, ${newHeight}]`
         )}`;
+      } else {
+        cropped = false;
       }
 
       if (format === "mp4") {
@@ -199,8 +203,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
       console.log(msg);
 
-      // if cropped
-      if (msgCropped.length !== 0) {
+      if (cropped) {
         log &&
           client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msgCropped) });
         console.warn(msgCropped);
