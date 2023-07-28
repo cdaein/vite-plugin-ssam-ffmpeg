@@ -13,6 +13,7 @@
  *
  * REVIEW
  * - alternative: better handle streaming through pipe?
+ * - png sequence export: don't really need to use ffmpeg for this. (cropping is done through filter, though.)
  */
 
 import type { PluginOption, ViteDevServer } from "vite";
@@ -24,13 +25,18 @@ import kleur from "kleur";
 import ansiRegex from "ansi-regex";
 
 type ExportOptions = {
+  /** console logging in browser */
   log?: boolean;
+  /** directory to save images to */
   outDir?: string;
+  /** how many preceding zeros to pad to filenames in image sequence */
+  padLength?: number;
 };
 
 const defaultOptions = {
   log: true,
   outDir: "./output",
+  padLength: 5,
 };
 
 const { gray, green, yellow } = kleur;
@@ -70,7 +76,8 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
   apply: "serve",
   async configureServer(server: ViteDevServer) {
-    const { log, outDir } = { ...defaultOptions, ...opts };
+    let { log, outDir, padLength } = { ...defaultOptions, ...opts };
+    let subDir = ""; // will be overwritten with datatime string
 
     // check for ffmpeg install first when plugin is loaded
     await execPromise(`ffmpeg -version`)
@@ -97,9 +104,11 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         const msg = `${prefix()} ffmpeg was not found`;
         log && client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msg) });
         console.warn(msg);
+        return;
       }
 
       ({ filename, format, totalFrames, width, height } = data);
+
       width = Math.floor(width);
       height = Math.floor(height);
       // crop to be multiples of 2
@@ -115,16 +124,16 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         cropped = false;
       }
 
-      if (format === "mp4") {
-        // if outDir not exist, create one
-        // TODO: use promise
-        if (!fs.existsSync(outDir)) {
-          console.log(
-            `${prefix()} creating a new directory at ${path.resolve(outDir)}`
-          );
-          fs.mkdirSync(outDir);
-        }
+      // if outDir not exist, create one
+      // TODO: use promise
+      if (!fs.existsSync(outDir)) {
+        console.log(
+          `${prefix()} creating a new directory at ${path.resolve(outDir)}`
+        );
+        fs.mkdirSync(outDir);
+      }
 
+      if (format === "mp4") {
         const inputArgs =
           `-f image2pipe -framerate ${data.fps} -c:v png -i - -filter crop=${newWidth}:${newHeight}:0:0`.split(
             " "
@@ -147,7 +156,39 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         isFfmpegReady = true;
 
-        const msg = `${prefix()} streaming (mp4) started`;
+        const msg = `${prefix()} streaming (${format}) started`;
+        log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
+        console.log(msg);
+      } else if (format === "png") {
+        // construct input and output args for ffmpeg
+        const inputArgs =
+          `-f image2pipe -framerate ${data.fps} -c:v png -i - -filter crop=${newWidth}:${newHeight}:0:0`.split(
+            " "
+          );
+
+        // create subDir for sequence export
+        subDir = path.join(outDir, filename);
+        if (!fs.existsSync(subDir)) {
+          console.log(
+            `${prefix()} creating a new directory at ${path.resolve(
+              path.join(subDir)
+            )}`
+          );
+          fs.mkdirSync(subDir);
+        }
+
+        // spawn ffmpeg process
+        const command = spawn("ffmpeg", [
+          "-y",
+          ...inputArgs,
+          path.join(subDir, `%0${padLength}d.${format}`),
+        ]);
+
+        ({ stdin } = command);
+
+        isFfmpegReady = true;
+
+        const msg = `${prefix()} streaming (${format}) started`;
         log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
         console.log(msg);
       }
@@ -172,7 +213,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       framesRecorded++;
 
       // send log to client
-      const msg = `${prefix()} recording (mp4) frame... ${framesRecorded} of ${
+      const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
         totalFrames ? totalFrames : "Infinity"
       }`;
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
@@ -196,13 +237,20 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       framesRecorded = 0;
 
       // send log to client
-      const msg = `${prefix()} ${path.join(
-        outDir,
-        `${filename}.${format}`
-      )} recording (mp4) complete`;
+      let msg = "";
+      if (format === "mp4") {
+        msg = `${prefix()} ${path.join(
+          outDir,
+          `${filename}.${format}`
+        )} recording (${format}) complete`;
+      } else if (format === "png") {
+        msg = `${prefix()} ${path.join(
+          subDir,
+          `${"*".repeat(padLength)}.${format}`
+        )} recording (${format}) complete`;
+      }
       log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
       console.log(msg);
-
       if (cropped) {
         log &&
           client.send("ssam:warn", { msg: removeAnsiEscapeCodes(msgCropped) });
