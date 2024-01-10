@@ -41,25 +41,6 @@ const defaultOptions = {
 
 const { gray, green, yellow } = kleur;
 
-const execPromise = (cmd: string) => {
-  return new Promise((resolve, reject) => {
-    exec(cmd, (err, stdout, stderr) => {
-      if (err) {
-        reject(stderr);
-      }
-      resolve(stdout);
-    });
-  });
-};
-
-const writePromise = (stdin: Writable, buffer: Buffer) =>
-  new Promise((resolve, reject) => {
-    stdin.write(buffer, (error) => {
-      if (error) reject(error);
-      else resolve(buffer);
-    });
-  });
-
 const prefix = () => {
   return `${gray(new Date().toLocaleTimeString())} ${green(`[ssam-ffmpeg]`)}`;
 };
@@ -89,20 +70,20 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
     let subDir = ""; // will be overwritten with datatime string
 
     // check for ffmpeg install first when plugin is loaded
-    await execPromise(`ffmpeg -version`)
-      .catch((err) => {
-        // if no ffmpeg, warn and abort
-        const msg = `${prefix()} ${yellow(err)}`;
-        log &&
-          server.ws.send("ssam:warn", {
-            msg: removeAnsiEscapeCodes(msg),
-            abort: true,
-          });
-        console.warn(`${msg}`);
-      })
-      .then(() => {
-        isFfmpegInstalled = true;
-      });
+    try {
+      await execPromise(`ffmpeg -version`);
+
+      isFfmpegInstalled = true;
+    } catch (error: any) {
+      // if no ffmpeg, warn and abort
+      const msg = `${prefix()} ${yellow(error)}`;
+      log &&
+        server.ws.send("ssam:warn", {
+          msg: removeAnsiEscapeCodes(msg),
+          abort: true,
+        });
+      console.warn(`${msg}`);
+    }
 
     let stdin: Writable;
     // let stdout: Readable;
@@ -282,3 +263,47 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
     });
   },
 });
+
+const execPromise = (cmd: string) =>
+  new Promise((resolve, reject) => {
+    exec(cmd, (err, stdout, stderr) => {
+      if (err) {
+        reject(stderr);
+      }
+      resolve(stdout);
+    });
+  });
+
+const writePromise = (stdin: Writable, buffer: Buffer) =>
+  new Promise((resolve, reject) => {
+    stdin.write(buffer, (error) => {
+      if (error) reject(error);
+      else resolve(buffer);
+    });
+  });
+
+// const writeFrameBuffer = (
+//   frameBuffers: Buffer[],
+//   maxBufferSize: number,
+//   stdin: Writable,
+//   client: any,
+// ) => {
+//   if (frameBuffers.length > 0) {
+//     const buffer = frameBuffers.shift();
+//     stdin.write(buffer, (err) => {
+//       if (err) {
+//         console.error(err);
+//         return;
+//       }
+//       // request next frame
+//       if (frameBuffers.length < maxBufferSize) {
+//         client.send("ssam:ffmpeg-reqframe");
+//         framesRecorded++;
+//
+//         console.log("requesting...", framesRecorded);
+//       }
+//
+//       writeFrameBuffer(frameBuffers, maxBufferSize, stdin, client);
+//     });
+//   }
+// };
