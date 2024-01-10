@@ -67,6 +67,7 @@ let filename: string;
 let format: string;
 let width: number;
 let height: number;
+// TODO: use the actual frame number coming from client
 let framesRecorded = 0;
 let totalFrames = 0;
 let cropped = false;
@@ -108,6 +109,9 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       }
 
       ({ filename, format, totalFrames, width, height } = data);
+
+      // reset frame count per each recording
+      framesRecorded = 0;
 
       width = Math.floor(width);
       height = Math.floor(height);
