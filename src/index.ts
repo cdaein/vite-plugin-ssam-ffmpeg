@@ -52,6 +52,14 @@ const execPromise = (cmd: string) => {
   });
 };
 
+const writePromise = (stdin: Writable, buffer: Buffer) =>
+  new Promise((resolve, reject) => {
+    stdin.write(buffer, (error) => {
+      if (error) reject(error);
+      else resolve(buffer);
+    });
+  });
+
 const prefix = () => {
   return `${gray(new Date().toLocaleTimeString())} ${green(`[ssam-ffmpeg]`)}`;
 };
@@ -205,16 +213,27 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      stdin.write(buffer, (err) => {
-        if (err) {
-          console.error(err);
-          return;
-        }
+      console.log(buffer);
+
+      // 3. promise
+      try {
+        // FIX: when exporting large/long video, at some point, this never gets called
+        await writePromise(stdin, buffer);
+
         // request next frame
         client.send("ssam:ffmpeg-reqframe");
-      });
+        framesRecorded++;
+        console.log("frame written", framesRecorded);
 
-      framesRecorded++;
+        // send log to client
+        const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
+          totalFrames ? totalFrames : "Infinity"
+        }`;
+        log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
+        console.log(msg);
+      } catch (e) {
+        console.error(e);
+      }
 
       // send log to client
       const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
