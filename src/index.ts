@@ -20,7 +20,7 @@ import type { PluginOption, ViteDevServer } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import { exec, spawn } from "node:child_process";
-import { Writable } from "stream";
+import { Readable, Writable } from "stream";
 import kleur from "kleur";
 import ansiRegex from "ansi-regex";
 
@@ -98,8 +98,8 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
     }
 
     let stdin: Writable;
-    // let stdout: Readable;
-    // let stderr: Readable;
+    let stdout: Readable;
+    let stderr: Readable;
 
     // this message is received when client starts a new recording
     server.ws.on("ssam:ffmpeg", async (data, client) => {
@@ -158,7 +158,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         ]);
 
         // get stdin from ffmpeg
-        ({ stdin } = command);
+        // ({ stdin, stdout, stderr } = command);
 
         isFfmpegReady = true;
 
@@ -207,17 +207,20 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
-      console.log(buffer);
 
-      // 3. promise
+      // 1. promise
       try {
-        // FIX: when exporting large/long video, at some point, this never gets called
+        // FIX: when exporting large/long video (4k 60fps),
+        // after about 15 seconds stdin.write() never gets called
+        // when logged, buffer is received correctly,
+        // can go into writePromise, but it never gets inside stdin.write()
+        // - is it because stdin is overwhelmed by incoming data?
+
         await writePromise(stdin, buffer);
 
         // request next frame
         client.send("ssam:ffmpeg-reqframe");
         framesRecorded++;
-        console.log("frame written", framesRecorded);
 
         // send log to client
         const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
@@ -232,28 +235,6 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       // 2. frameBuffers method
       // frameBuffers.push(buffer);
       // writeFrameBuffer(frameBuffers, maxBufferSize, stdin, client);
-
-      // 1. stream writing method
-      // stdin.write(buffer, (err) => {
-      //   if (err) {
-      //     console.error(err);
-      //     return;
-      //   }
-      //
-      //   // request next frame
-      //   client.send("ssam:ffmpeg-reqframe");
-      //
-      //   framesRecorded++;
-      //
-      //   console.log("frame written", framesRecorded);
-      //
-      //   // send log to client
-      //   const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
-      //     totalFrames ? totalFrames : "Infinity"
-      //   }`;
-      //   log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
-      //   console.log(msg);
-      // });
     });
 
     server.ws.on("ssam:ffmpeg-done", (_, client) => {
@@ -307,8 +288,11 @@ const execPromise = (cmd: string) =>
   });
 
 const writePromise = (stdin: Writable, buffer: Buffer) =>
-  new Promise((resolve, reject) => {
+  new Promise(async (resolve, reject) => {
+    // console.log("in writePromise");
+
     stdin.write(buffer, (error) => {
+      // console.log("in stdin.write");
       if (error) reject(error);
       else resolve(buffer);
     });
