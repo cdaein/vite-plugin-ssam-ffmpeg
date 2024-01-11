@@ -237,24 +237,24 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       // when logging ffmpeg process, there's a difference between
       // the frame that is being processed by ffmpeg and the frame that is being sent.
       // need a more closer look.
-      try {
-        const written = await writePromise(stdin, buffer);
 
-        if (written) {
-          // request next frame
-          client.send("ssam:ffmpeg-reqframe");
-          framesRecorded++;
-
-          // send log to client
-          const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
-            totalFrames ? totalFrames : "Infinity"
-          }`;
-          log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
-          console.log(msg);
+      stdin.write(buffer, (error) => {
+        if (error) {
+          console.error(error);
+          return;
         }
-      } catch (e) {
-        console.error(e);
-      }
+        // request next frame
+        client.send("ssam:ffmpeg-reqframe");
+      });
+
+      framesRecorded++;
+
+      // send log to client
+      const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
+        totalFrames ? totalFrames : "Infinity"
+      }`;
+      log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
+      console.log(msg);
     });
 
     server.ws.on("ssam:ffmpeg-done", (_, client) => {
