@@ -29,6 +29,8 @@ type ExportOptions = {
   log?: boolean;
   /** directory to save images to */
   outDir?: string;
+  /** generates ffmpeg log file for debugging by adding `-report` flag */
+  debug?: boolean;
   /** how many preceding zeros to pad to filenames in image sequence */
   padLength?: number;
   /**
@@ -43,6 +45,7 @@ const defaultOptions = {
   log: true,
   outDir: "./output",
   padLength: 5,
+  debug: false,
   maxBufferSize: 64,
 };
 
@@ -73,7 +76,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
   apply: "serve",
   async configureServer(server: ViteDevServer) {
-    let { log, outDir, padLength, maxBufferSize } = {
+    let { log, outDir, padLength, maxBufferSize, debug } = {
       ...defaultOptions,
       ...opts,
     };
@@ -149,6 +152,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
               "-preset", "slow", "-crf", "18", "-r", data.fps,
               '-movflags', '+faststart',
             ]
+        debug && outputArgs.push("-report");
 
         const command = spawn("ffmpeg", [
           "-y",
@@ -158,7 +162,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         ]);
 
         // get stdin from ffmpeg
-        // ({ stdin, stdout, stderr } = command);
+        ({ stdin, stdout, stderr } = command);
 
         isFfmpegReady = true;
 
@@ -171,6 +175,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
           `-f image2pipe -framerate ${data.fps} -c:v png -i - -filter crop=${newWidth}:${newHeight}:0:0`.split(
             " ",
           );
+        debug && inputArgs.push("-report");
 
         // create subDir for sequence export
         subDir = path.join(outDir, filename);
