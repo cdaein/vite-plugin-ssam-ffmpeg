@@ -1,19 +1,15 @@
 /**
- *
  * - check ffmpeg install, if not found, abort
  * - "ssam:ffmpeg" received, set up ffmpeg encoder
  * - "ssam:ffmpeg-newframe" received, encode the frame, and when it's finished request next frame with "ssam:ffmpeg-reqframe".
  * - on client-side, it will wait until "ffmpeg-reqframe" is received and then advance time and send a new frame. (send/receive/encode is synched)
  * - when "ssam:ffmpeg-done" received, finish encoding
  *
- * FIX
+ * REVIEW:
  * - 4000x4000 results in pixelated video with libx264 codec.
  *   - is it codec limitation or settings?
  *   - stream chunks?
- *
- * REVIEW
- * - alternative: better handle streaming through pipe?
- * - png sequence export: don't really need to use ffmpeg for this. (cropping is done through filter, though.)
+ *   - need more testing with hires sketches
  */
 
 import type { PluginOption, ViteDevServer } from "vite";
@@ -29,9 +25,15 @@ type ExportOptions = {
   log?: boolean;
   /** directory to save images to */
   outDir?: string;
-  /** generates ffmpeg log file for debugging by adding `-report` flag */
+  /**
+   * generates ffmpeg log file for debugging by adding `-report` flag.
+   * it also adds ffmpeg `stderr` verbose log to the terminal.
+   */
   debug?: boolean;
-  /** how many preceding zeros to pad to filenames in image sequence */
+  /**
+   * how many preceding zeros to pad to filenames in image sequence
+   * @default 5
+   */
   padLength?: number;
   /**
    * Control the flow of incoming frames by first storing in buffer array.
@@ -49,7 +51,7 @@ const defaultOptions = {
   // maxBufferSize: 64,
 };
 
-const { gray, green, yellow, red } = pc;
+const { gray, green, yellow } = pc;
 
 const prefix = () => {
   return `${gray(new Date().toLocaleTimeString())} ${green(`[ssam-ffmpeg]`)}`;
@@ -66,11 +68,11 @@ let filename: string;
 let format: string;
 let width: number;
 let height: number;
-// TODO: use the actual frame number coming from client
+// REVIEW: use the actual frame number coming from client?
 let framesRecorded = 0;
 let totalFrames = 0;
 let cropped = false;
-let msgCropped = ""; // msg to log after finishing (otherwise, the log is already far up)
+let msgCropped = ""; // msg to log (if image cropped) after finishing (otherwise, the log is already far up)
 
 export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
