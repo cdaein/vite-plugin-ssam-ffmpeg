@@ -162,14 +162,14 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         // get stdin from ffmpeg
         ({ stdin, stdout, stderr } = command);
 
-        stdin.on("data", (data) => {
-          console.log(`${gray(`stdin`)}: ${data}`);
-        });
+        // stdin.on("data", (data) => {
+        //   console.log(`${gray(`stdin`)}: ${data}`);
+        // });
         stdout.on("data", (data) => {
           console.log(`${yellow(`stdout`)}: ${data}`);
         });
         stderr.on("data", (data) => {
-          console.error(`${red("stderr")}: ${data}`);
+          console.error(`${yellow("stderr")}: ${data}`);
         });
 
         isFfmpegReady = true;
@@ -205,14 +205,14 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         ({ stdin, stdout, stderr } = command);
 
-        stdin.on("data", (data) => {
-          console.log(`${gray(`stdin`)}: ${data}`);
-        });
+        // stdin.on("data", (data) => {
+        //   console.log(`${gray(`stdin`)}: ${data}`);
+        // });
         stdout.on("data", (data) => {
           console.log(`${yellow(`stdout`)}: ${data}`);
         });
         stderr.on("data", (data) => {
-          console.error(`${red("stderr")}: ${data}`);
+          console.error(`${yellow("stderr")}: ${data}`);
         });
 
         isFfmpegReady = true;
