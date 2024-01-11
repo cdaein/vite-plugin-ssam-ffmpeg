@@ -21,7 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec, spawn } from "node:child_process";
 import { Readable, Writable } from "stream";
-import kleur from "kleur";
+import pc from "picocolors";
 import ansiRegex from "ansi-regex";
 
 type ExportOptions = {
@@ -49,7 +49,7 @@ const defaultOptions = {
   maxBufferSize: 64,
 };
 
-const { gray, green, yellow } = kleur;
+const { gray, green, yellow } = pc;
 
 const prefix = () => {
   return `${gray(new Date().toLocaleTimeString())} ${green(`[ssam-ffmpeg]`)}`;
