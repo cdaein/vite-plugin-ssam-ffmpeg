@@ -38,7 +38,7 @@ type ExportOptions = {
    * This property sets the maximum length of buffer array that temporarily holds buffer objects.
    * Lower this value if you notice freezing.
    */
-  maxBufferSize?: number;
+  // maxBufferSize?: number;
 };
 
 const defaultOptions = {
@@ -46,7 +46,7 @@ const defaultOptions = {
   outDir: "./output",
   padLength: 5,
   debug: false,
-  maxBufferSize: 64,
+  // maxBufferSize: 64,
 };
 
 const { gray, green, yellow, red } = pc;
@@ -76,13 +76,11 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
   name: "vite-plugin-ssam-ffmpeg",
   apply: "serve",
   async configureServer(server: ViteDevServer) {
-    let { log, outDir, padLength, maxBufferSize, debug } = {
+    let { log, outDir, padLength, debug } = {
       ...defaultOptions,
       ...opts,
     };
     let subDir = ""; // will be overwritten with datatime string
-
-    // const frameBuffers: Buffer[] = [];
 
     // check for ffmpeg install first when plugin is loaded
     try {
@@ -256,20 +254,10 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       } catch (e) {
         console.error(e);
       }
-
-      // 2. frameBuffers method
-      // frameBuffers.push(buffer);
-      // writeFrameBuffer(frameBuffers, maxBufferSize, stdin, client);
     });
 
     server.ws.on("ssam:ffmpeg-done", (_, client) => {
       if (!isFfmpegInstalled || !isFfmpegReady) return;
-
-      // handle remaining frames
-      // while (frameBuffers.length > 0) {
-      //   const frame = frameBuffers.shift();
-      //   stdin.write(frame);
-      // }
 
       // finish up recording
       stdin.end();
@@ -322,29 +310,3 @@ const writePromise = (stdin: Writable, buffer: Buffer) =>
       else resolve(buffer);
     });
   });
-
-// const writeFrameBuffer = (
-//   frameBuffers: Buffer[],
-//   maxBufferSize: number,
-//   stdin: Writable,
-//   client: any,
-// ) => {
-//   if (frameBuffers.length > 0) {
-//     const buffer = frameBuffers.shift();
-//     stdin.write(buffer, (err) => {
-//       if (err) {
-//         console.error(err);
-//         return;
-//       }
-//       // request next frame
-//       if (frameBuffers.length < maxBufferSize) {
-//         client.send("ssam:ffmpeg-reqframe");
-//         framesRecorded++;
-//
-//         console.log("requesting...", framesRecorded);
-//       }
-//
-//       writeFrameBuffer(frameBuffers, maxBufferSize, stdin, client);
-//     });
-//   }
-// };
