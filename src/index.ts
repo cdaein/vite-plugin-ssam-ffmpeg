@@ -164,14 +164,11 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         // get stdin from ffmpeg
         ({ stdin, stdout, stderr } = command);
 
-        // stdin.on("data", (data) => {
-        //   console.log(`${gray(`stdin`)}: ${data}`);
-        // });
         stdout.on("data", (data) => {
-          console.log(`${yellow(`stdout`)}: ${data}`);
+          debug && console.log(`${yellow(`stdout`)}: ${data}`);
         });
         stderr.on("data", (data) => {
-          console.error(`${yellow("stderr")}: ${data}`);
+          debug && console.error(`${yellow("stderr")}: ${data}`);
         });
 
         isFfmpegReady = true;
@@ -207,14 +204,15 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         ({ stdin, stdout, stderr } = command);
 
-        // stdin.on("data", (data) => {
-        //   console.log(`${gray(`stdin`)}: ${data}`);
-        // });
+        // https://nodejs.org/api/child_process.html#child-process
+        // need to attach listeners to consume data as ffmpeg also does stderr.write(cb) and waiting.
+        // otherwise, it fills up the buffer
+        // thanks to greweb for pointing it out
         stdout.on("data", (data) => {
-          console.log(`${yellow(`stdout`)}: ${data}`);
+          debug && console.log(`${yellow(`stdout`)}: ${data}`);
         });
         stderr.on("data", (data) => {
-          console.error(`${yellow("stderr")}: ${data}`);
+          debug && console.error(`${yellow("stderr")}: ${data}`);
         });
 
         isFfmpegReady = true;
@@ -233,26 +231,27 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       // write frame and when it's written, ask for next frame
       const buffer = Buffer.from(data.image.split(",")[1], "base64");
 
-      // 1. promise
+      // REVIEW:
+      // although, there's check in place to only request a new frame after processing the current one
+      // and also, only send a new frame when it's requested from client,
+      // when logging ffmpeg process, there's a difference between
+      // the frame that is being processed by ffmpeg and the frame that is being sent.
+      // need a more closer look.
       try {
-        // FIX: when exporting large/long video (4k 60fps),
-        // after about 15 seconds stdin.write() never gets called
-        // when logged, buffer is received correctly,
-        // can go into writePromise, but it never gets inside stdin.write()
-        // - is it because stdin is overwhelmed by incoming data?
+        const written = await writePromise(stdin, buffer);
 
-        await writePromise(stdin, buffer);
+        if (written) {
+          // request next frame
+          client.send("ssam:ffmpeg-reqframe");
+          framesRecorded++;
 
-        // request next frame
-        client.send("ssam:ffmpeg-reqframe");
-        framesRecorded++;
-
-        // send log to client
-        const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
-          totalFrames ? totalFrames : "Infinity"
-        }`;
-        log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
-        console.log(msg);
+          // send log to client
+          const msg = `${prefix()} recording (${format}) frame... ${framesRecorded} of ${
+            totalFrames ? totalFrames : "Infinity"
+          }`;
+          log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
+          console.log(msg);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -295,20 +294,15 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 const execPromise = (cmd: string) =>
   new Promise((resolve, reject) => {
     exec(cmd, (err, stdout, stderr) => {
-      if (err) {
-        reject(stderr);
-      }
+      if (err) reject(stderr);
       resolve(stdout);
     });
   });
 
-const writePromise = (stdin: Writable, buffer: Buffer) =>
+const writePromise = (stdin: Writable, buffer: Buffer): Promise<boolean> =>
   new Promise(async (resolve, reject) => {
-    // console.log("in writePromise");
-
     stdin.write(buffer, (error) => {
-      // console.log("in stdin.write");
       if (error) reject(error);
-      else resolve(buffer);
+      else resolve(true);
     });
   });
