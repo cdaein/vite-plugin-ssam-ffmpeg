@@ -176,6 +176,9 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         const msg = `${prefix()} streaming (${format}) started`;
         log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
         console.log(msg);
+
+        // request a new frame immediately
+        client.send("ssam:ffmpeg-reqframe");
       } else if (format === "png") {
         // construct input and output args for ffmpeg
         const inputArgs =
