@@ -164,9 +164,12 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         // get stdin from ffmpeg
         ({ stdin, stdout, stderr } = command);
 
-        stdout.on("data", (data) => {
-          debug && console.log(`${yellow(`stdout`)}: ${data}`);
-        });
+        // https://nodejs.org/api/child_process.html#child-process
+        // need to attach listeners to consume data as ffmpeg also does stderr.write(cb) and waiting.
+        // otherwise, it fills up the buffer
+        // thanks to greweb for pointing it out
+        stdout.on("data", (data) => {});
+        // ffmpeg sends all logs to `stderr` and leave `stdout` for data
         stderr.on("data", (data) => {
           debug && console.error(`${yellow("stderr")}: ${data}`);
         });
@@ -207,13 +210,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         ({ stdin, stdout, stderr } = command);
 
-        // https://nodejs.org/api/child_process.html#child-process
-        // need to attach listeners to consume data as ffmpeg also does stderr.write(cb) and waiting.
-        // otherwise, it fills up the buffer
-        // thanks to greweb for pointing it out
-        stdout.on("data", (data) => {
-          debug && console.log(`${yellow(`stdout`)}: ${data}`);
-        });
+        stdout.on("data", (data) => {});
         stderr.on("data", (data) => {
           debug && console.error(`${yellow("stderr")}: ${data}`);
         });
@@ -223,6 +220,10 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         const msg = `${prefix()} streaming (${format}) started`;
         log && client.send("ssam:log", { msg: removeAnsiEscapeCodes(msg) });
         console.log(msg);
+
+        // request a new frame immediately
+        // REVIEW: test with ssam first
+        // client.send("ssam:ffmpeg-reqframe");
       }
     });
 
