@@ -20,14 +20,14 @@
   "author": "Daeinc",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^20.10.8",
-    "ssam": "^0.12.1",
-    "tsup": "^8.0.1",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.11"
+    "@types/node": "^22.13.5",
+    "ssam": "^0.20.2",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.1"
   },
   "dependencies": {
-    "ansi-regex": "^6.0.1"
+    "ansi-regex": "^6.1.0"
   },
   "repository": {
     "type": "git",
