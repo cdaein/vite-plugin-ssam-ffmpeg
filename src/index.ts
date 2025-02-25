@@ -17,8 +17,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec, spawn } from "node:child_process";
 import { Readable, Writable } from "stream";
-import pc from "picocolors";
 import ansiRegex from "ansi-regex";
+import { color } from "./utils";
 
 type ExportOptions = {
   /** console logging in browser */
@@ -51,10 +51,8 @@ const defaultOptions = {
   // maxBufferSize: 64,
 };
 
-const { gray, green, yellow } = pc;
-
 const prefix = () => {
-  return `${gray(new Date().toLocaleTimeString())} ${green(`[ssam-ffmpeg]`)}`;
+  return `${color(new Date().toLocaleTimeString(), "gray")} ${color(`[ssam-ffmpeg]`, "green")}`;
 };
 
 const removeAnsiEscapeCodes = (str: string) => {
@@ -91,7 +89,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
       isFfmpegInstalled = true;
     } catch (error: any) {
       // if no ffmpeg, warn and abort
-      const msg = `${prefix()} ${yellow(error)}`;
+      const msg = `${prefix()} ${color(error, "yellow")}`;
       log &&
         server.ws.send("ssam:warn", {
           msg: removeAnsiEscapeCodes(msg),
@@ -126,8 +124,9 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
       if (width % 2 !== 0 || height % 2 !== 0) {
         cropped = true;
-        msgCropped = `${prefix()} ${yellow(
+        msgCropped = `${prefix()} ${color(
           `output dimensions cropped to be multiples of 2: [${newWidth}, ${newHeight}]`,
+          "yellow",
         )}`;
       } else {
         cropped = false;
@@ -171,7 +170,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
         stdout.on("data", (data) => {});
         // ffmpeg sends all logs to `stderr` and leave `stdout` for data
         stderr.on("data", (data) => {
-          debug && console.error(`${yellow("stderr")}: ${data}`);
+          debug && console.error(`${color("stderr", "yellow")}: ${data}`);
         });
 
         isFfmpegReady = true;
@@ -212,7 +211,7 @@ export const ssamFfmpeg = (opts: ExportOptions = {}): PluginOption => ({
 
         stdout.on("data", (data) => {});
         stderr.on("data", (data) => {
-          debug && console.error(`${yellow("stderr")}: ${data}`);
+          debug && console.error(`${color("stderr", "yellow")}: ${data}`);
         });
 
         isFfmpegReady = true;

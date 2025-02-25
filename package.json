@@ -27,8 +27,7 @@
     "vite": "^5.0.11"
   },
   "dependencies": {
-    "ansi-regex": "^6.0.1",
-    "picocolors": "^1.0.0"
+    "ansi-regex": "^6.0.1"
   },
   "repository": {
     "type": "git",
